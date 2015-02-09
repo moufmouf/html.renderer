@@ -3,7 +3,7 @@
 namespace Mouf\Html\Renderer;
 
 use Mouf;
-use Mouf\RootContainer;
+use Mouf\RootContainer\RootContainer;
 
 /**
  * Classes using this trait will have an automatic implementation of the toHtml method provided that

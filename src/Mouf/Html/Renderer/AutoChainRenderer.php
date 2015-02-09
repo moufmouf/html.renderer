@@ -1,14 +1,14 @@
 <?php
 /*
- * Copyright (c) 2013 David Negrier
- *
+ * Copyright (c) 2013-2015 David Negrier
+ * 
  * See the file LICENSE.txt for copying permission.
  */
 
 namespace Mouf\Html\Renderer;
 
+use Mouf\MoufContainer;
 use Mouf\Utils\Cache\CacheInterface;
-use Mouf\MoufManager;
 
 /**
  * This class is a renderer that renders objects using other renderers.
@@ -18,8 +18,7 @@ use Mouf\MoufManager;
  *
  * @author David Négrier <david@mouf-php.com>
  */
-class AutoChainRenderer implements CanSetTemplateRendererInterface
-{
+class AutoChainRenderer implements CanSetTemplateRendererInterface {
 
     /**
      * @var ChanableRendererInterface
@@ -34,6 +33,11 @@ class AutoChainRenderer implements CanSetTemplateRendererInterface
      */
     private $customRenderers = array();
 
+    /**
+     * @var MoufContainer
+     */
+    private $container;
+
     private $cacheService;
 
     private $initDone = false;
@@ -42,17 +46,16 @@ class AutoChainRenderer implements CanSetTemplateRendererInterface
      *
      * @param CacheInterface $cacheService This service is used to speed up the mapping between the object and the template.
      */
-    public function __construct(CacheInterface $cacheService)
-    {
+    public function __construct(CacheInterface $cacheService, MoufContainer $container) {
         $this->cacheService = $cacheService;
+        $this->container = $container;
     }
 
     /**
      * (non-PHPdoc)
      * @see \Mouf\Html\Renderer\RendererInterface::render()
      */
-    public function render($object, $context = null)
-    {
+    public function render($object, $context = null) {
         $renderer = $this->getRenderer($object, $context);
         if ($renderer == null) {
             throw new \Exception("Renderer not found. Unable to find renderer for object of class '".get_class($object)."'. Path tested: ".$this->getRendererDebugMessage($object, $context));
@@ -67,19 +70,17 @@ class AutoChainRenderer implements CanSetTemplateRendererInterface
      *
      * @param RendererInterface $templateRenderer
      */
-    public function setTemplateRenderer(RendererInterface $templateRenderer)
-    {
+    public function setTemplateRenderer(RendererInterface $templateRenderer) {
         $this->templateRenderer = $templateRenderer;
     }
 
-    private function getRenderer($object, $context = null)
-    {
+    private function getRenderer($object, $context = null) {
         $instanceName = $this->getInstanceName();
 
         $cacheKey = "chainRendererByClass_".$instanceName."/".get_class($object)."/".$context;
         $rendererName = $this->cacheService->get($cacheKey);
         if ($rendererName != null) {
-            return MoufManager::getMoufManager()->getInstance($rendererName);
+            return $this->container->get($rendererName);
         }
 
         $this->initRenderersList();
@@ -123,11 +124,12 @@ class AutoChainRenderer implements CanSetTemplateRendererInterface
                     break 2;
                 }
             }
+
         } while (false);
 
         if ($isCachable && $foundRenderer) {
             // TODO: suboptimal
-            $this->cacheService->set($cacheKey, MoufManager::getMoufManager()->findInstanceName($foundRenderer));
+            $this->cacheService->set($cacheKey, $this->container->findInstanceName($foundRenderer));
         }
 
         return $foundRenderer;
@@ -136,12 +138,11 @@ class AutoChainRenderer implements CanSetTemplateRendererInterface
     /**
      * Returns a string explaining the steps done to find the renderer.
      *
-     * @param  object $object
-     * @param  string $context
+     * @param object $object
+     * @param string $context
      * @return string
      */
-    private function getRendererDebugMessage($object, $context = null)
-    {
+    private function getRendererDebugMessage($object, $context = null) {
         $debugMessage = '';
 
         $this->initRenderersList();
@@ -190,6 +191,7 @@ class AutoChainRenderer implements CanSetTemplateRendererInterface
                     break 2;
                 }
             }
+
         } while (false);
 
         return $debugMessage;
@@ -197,26 +199,20 @@ class AutoChainRenderer implements CanSetTemplateRendererInterface
 
     private $instanceName;
 
-    private function getInstanceName()
-    {
+    private function getInstanceName() {
         if ($this->instanceName !== null) {
             return $this->instanceName;
         }
-        $moufManager = MoufManager::getMoufManager();
         // TODO: suboptimal. findInstanceName is not efficient.
-        $this->instanceName = $moufManager->findInstanceName($this);
-
+        $this->instanceName = $this->container->findInstanceName($this);
         return $this->instanceName;
     }
 
     /**
      * Initializes the renderers list (from cache if available)
      */
-    private function initRenderersList()
-    {
+    private function initRenderersList() {
         if (!$this->initDone) {
-            $moufManager = MoufManager::getMoufManager();
-            // TODO: suboptimal. findInstanceName is not efficient.
             $instanceName = $this->getInstanceName();
             $renderersList = $this->cacheService->get("chainRenderer_".$instanceName);
             if ($renderersList === null) {
@@ -225,14 +221,14 @@ class AutoChainRenderer implements CanSetTemplateRendererInterface
             }
 
             if (isset($renderersList[ChainableRendererInterface::TYPE_CUSTOM])) {
-                $this->customRenderers = array_map(function ($name) use ($moufManager) {
-                    return $moufManager->getInstance($name);
+                $this->customRenderers = array_map(function($name) {
+                    return $this->container->get($name);
                 }, $renderersList[ChainableRendererInterface::TYPE_CUSTOM]);
             }
 
             if (isset($renderersList[ChainableRendererInterface::TYPE_PACKAGE])) {
-                $this->packageRenderers = array_map(function ($name) use ($moufManager) {
-                    return $moufManager->getInstance($name);
+                $this->packageRenderers = array_map(function($name) {
+                    return $this->container->get($name);
                 }, $renderersList[ChainableRendererInterface::TYPE_PACKAGE]);
             }
 
@@ -247,13 +243,11 @@ class AutoChainRenderer implements CanSetTemplateRendererInterface
      *
      * @return array<string, string[]>
      */
-    private function queryRenderersList()
-    {
-        $moufManager = MoufManager::getMoufManager();
-        $renderersNames = $moufManager->findInstances('Mouf\\Html\\Renderer\\ChainableRendererInterface');
+    private function queryRenderersList() {
+        $renderersNames = $this->container->findInstances('Mouf\\Html\\Renderer\\ChainableRendererInterface');
 
         foreach ($renderersNames as $name) {
-            $renderers[$name] = $moufManager->getInstance($name);
+            $renderers[$name] = $this->container->get($name);
         }
 
         $renderersByType = array();
@@ -263,14 +257,12 @@ class AutoChainRenderer implements CanSetTemplateRendererInterface
         }
 
         // Now, let's sort the renderers by priority (highest first).
-        $renderersByType = array_map(function (array $innerArray) use ($renderers) {
-            usort($innerArray, function ($name1, $name2) use ($renderers) {
+        $renderersByType = array_map(function(array $innerArray) use ($renderers) {
+            usort($innerArray, function($name1, $name2) use ($renderers) {
                 $item1 = $renderers[$name1];
                 $item2 = $renderers[$name2];
-
                 return $item2->getPriority() - $item1->getPriority();
             });
-
             return $innerArray;
         }, $renderersByType);
 

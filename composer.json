@@ -32,11 +32,12 @@
 	},
 	"extra" : {
 		"mouf" : {
-			"install" : [{
-					"file" : "src/install.php",
-					"type" : "file"
-				}
-			],
+		  "install": [
+			{
+			  "type": "class",
+			  "class": "Mouf\\Utils\\Log\\Psr\\ErrorLogLoggerInstaller"
+			}
+		  ],
 			"logo" : "logo.png",
 			"doc" : [{
 					"title" : "For application developers",
